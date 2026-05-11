@@ -7,6 +7,7 @@ import { AbilitySystem } from './abilities.js';
 import { EffectsManager } from './effects.js';
 import { BotAI } from './bot.js';
 import { UIManager } from './ui.js';
+import { setupPostProcessing } from './postprocessing.js';
 
 class Game {
     constructor() {
@@ -15,6 +16,14 @@ class Game {
         this.renderer = renderer;
         this.scene = scene;
         this.camera = camera;
+
+        // Post-processing
+        const pp = setupPostProcessing(renderer, scene, camera);
+        this.composer = pp.composer;
+        this.bloomPass = pp.bloomPass;
+        this.cursedPass = pp.cursedPass;
+        this.glitchPass = pp.glitchPass;
+        this.neonPass = pp.neonPass;
 
         this.effects = new EffectsManager(scene);
         this.abilities = new AbilitySystem(this.effects);
@@ -27,27 +36,33 @@ class Game {
 
         this.clock = new THREE.Clock();
         this.gameActive = false;
-        this.matchTimer = 300; // 5 minutes
+        this.matchTimer = 300;
         this.isPaused = false;
 
-        // Input state
+        // FPS Input state
         this.keys = {};
-        this.mouse = { x: 0, y: 0, dx: 0, dy: 0, lmb: false, rmb: false };
+        this.mouse = { dx: 0, dy: 0, lmb: false, rmb: false };
         this.cameraYaw = 0;
-        this.cameraPitch = 0.3;
-        this.cameraDistance = 10;
+        this.cameraPitch = 0;
         this.pointerLocked = false;
 
-        // Gojo passive - highlight range
-        this.highlightRange = 20;
+        // Camera bob
+        this.bobTimer = 0;
+        this.bobIntensity = 0;
+
+        // Hit effect timer
+        this.hitFlashTimer = 0;
+        this.glitchTimer = 0;
+
+        // FPS arms model
+        this.fpsArms = null;
+
+        this.highlightRange = 25;
 
         this._setupInput();
         this._setupCallbacks();
 
-        // Build arena in background for hero select screen bg
         this.arenaData = buildArena(this.scene);
-
-        // Preview camera rotation
         this.previewMode = true;
 
         this._loop();
@@ -65,9 +80,7 @@ class Game {
                     e.preventDefault();
                     if (this.player) this.player.jump();
                 }
-                if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-                    this._dash();
-                }
+                if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._dash();
             }
         });
         document.addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -82,16 +95,13 @@ class Game {
         document.addEventListener('mousedown', e => {
             if (e.button === 0) {
                 this.mouse.lmb = true;
-                if (this.gameActive && !this.pointerLocked) {
-                    this.canvas.requestPointerLock();
-                }
+                if (this.gameActive && !this.pointerLocked) this.canvas.requestPointerLock();
             }
             if (e.button === 2) {
                 this.mouse.rmb = true;
                 if (this.player) this.player.isBlocking = true;
             }
         });
-
         document.addEventListener('mouseup', e => {
             if (e.button === 0) this.mouse.lmb = false;
             if (e.button === 2) {
@@ -99,16 +109,8 @@ class Game {
                 if (this.player) this.player.isBlocking = false;
             }
         });
-
         document.addEventListener('contextmenu', e => e.preventDefault());
-
-        document.addEventListener('pointerlockchange', () => {
-            this.pointerLocked = !!document.pointerLockElement;
-        });
-
-        document.addEventListener('wheel', e => {
-            this.cameraDistance = Math.max(4, Math.min(20, this.cameraDistance + e.deltaY * 0.01));
-        });
+        document.addEventListener('pointerlockchange', () => { this.pointerLocked = !!document.pointerLockElement; });
     }
 
     _setupCallbacks() {
@@ -116,10 +118,51 @@ class Game {
         this.ui.onBack = () => this.resetGame();
     }
 
+    _createFPSArms(heroDef) {
+        if (this.fpsArms) this.camera.remove(this.fpsArms);
+        const arms = new THREE.Group();
+        const c = heroDef.colors;
+
+        const armMat = new THREE.MeshStandardMaterial({ color: c.body, roughness: 0.5, emissive: c.accent, emissiveIntensity: 0.1 });
+        const skinMat = new THREE.MeshStandardMaterial({ color: c.skin, roughness: 0.6 });
+        const glowMat = new THREE.MeshBasicMaterial({ color: c.accent, transparent: true, opacity: 0.3 });
+
+        // Left arm
+        const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.18), armMat);
+        leftArm.position.set(-0.35, -0.35, -0.5);
+        leftArm.rotation.x = -0.3;
+        arms.add(leftArm);
+        const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), skinMat);
+        leftHand.position.set(-0.35, -0.55, -0.6);
+        arms.add(leftHand);
+        // Energy glow on left hand
+        const leftGlow = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), glowMat);
+        leftGlow.position.copy(leftHand.position);
+        leftGlow.name = 'leftGlow';
+        arms.add(leftGlow);
+
+        // Right arm
+        const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.18), armMat);
+        rightArm.position.set(0.35, -0.35, -0.5);
+        rightArm.rotation.x = -0.3;
+        rightArm.name = 'rightArm';
+        arms.add(rightArm);
+        const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), skinMat);
+        rightHand.position.set(0.35, -0.55, -0.6);
+        rightHand.name = 'rightHand';
+        arms.add(rightHand);
+        // Energy on right
+        const rightGlow = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), glowMat);
+        rightGlow.position.copy(rightHand.position);
+        rightGlow.name = 'rightGlow';
+        arms.add(rightGlow);
+
+        this.camera.add(arms);
+        this.fpsArms = arms;
+    }
+
     startGame(heroId, mode) {
         this.previewMode = false;
-
-        // Clear any existing entities
         this.entities.forEach(e => this.scene.remove(e.model));
         this.entities = [];
         this.bots = [];
@@ -127,34 +170,37 @@ class Game {
 
         const heroDef = HEROES[heroId];
 
-        // Create player
-        this.player = new Entity(heroDef, new THREE.Vector3(0, 0, 15), true);
+        // Player
+        this.player = new Entity(heroDef, new THREE.Vector3(0, 0, 30), true);
+        this.player.model.visible = false; // FPS: hide own model
         this.scene.add(this.player.model);
         this.entities.push(this.player);
 
-        // Create bots based on mode
-        if (mode === 'training') {
-            this._spawnTrainingBots();
-        } else if (mode === 'deathmatch') {
-            this._spawnDeathmatchBot(heroId);
-        } else if (mode === 'boss') {
-            this._spawnBoss();
-        }
+        // FPS arms
+        this._createFPSArms(heroDef);
+        this.scene.add(this.camera);
+
+        // Bots
+        if (mode === 'training') this._spawnTrainingBots();
+        else if (mode === 'deathmatch') this._spawnDeathmatchBot(heroId);
+        else if (mode === 'boss') this._spawnBoss();
 
         this.matchTimer = 300;
         this.gameActive = true;
+        this.cameraYaw = 0;
+        this.cameraPitch = 0;
         this.ui.showHUD(heroDef);
-
-        // Lock pointer
         this.canvas.requestPointerLock();
     }
 
     _spawnTrainingBots() {
         const heroKeys = Object.keys(HEROES);
         const positions = [
-            new THREE.Vector3(-10, 0, -10),
-            new THREE.Vector3(10, 0, -10),
-            new THREE.Vector3(0, 0, -20),
+            new THREE.Vector3(-20, 0, -20),
+            new THREE.Vector3(20, 0, -20),
+            new THREE.Vector3(0, 0, -40),
+            new THREE.Vector3(-40, 0, 0),
+            new THREE.Vector3(40, 0, 0),
         ];
         positions.forEach((pos, i) => {
             const heroDef = HEROES[heroKeys[i % heroKeys.length]];
@@ -168,31 +214,25 @@ class Game {
     _spawnDeathmatchBot(playerHeroId) {
         const heroKeys = Object.keys(HEROES).filter(k => k !== playerHeroId);
         const heroDef = HEROES[heroKeys[Math.floor(Math.random() * heroKeys.length)]];
-        const bot = new Entity(heroDef, new THREE.Vector3(0, 0, -15));
+        const bot = new Entity(heroDef, new THREE.Vector3(0, 0, -30));
         this.scene.add(bot.model);
         this.entities.push(bot);
         this.bots.push(new BotAI(bot, 2));
     }
 
     _spawnBoss() {
-        // Boss Sukuna with 3x HP
-        const bossDef = { ...HEROES.sukuna, hp: 300, name: 'БОСС: Сукуна', speed: 5 };
-        const boss = new Entity(bossDef, new THREE.Vector3(0, 0, -20));
-        boss.model.scale.setScalar(1.8);
+        const bossDef = { ...HEROES.sukuna, hp: 400, name: 'BOSS: Ryomen Sukuna', speed: 5 };
+        const boss = new Entity(bossDef, new THREE.Vector3(0, 0, -40));
+        boss.model.scale.setScalar(2);
         this.scene.add(boss.model);
         this.entities.push(boss);
         this.bots.push(new BotAI(boss, 2));
 
-        // Helper bots
-        const helpers = [
-            new Entity(HEROES.yuji, new THREE.Vector3(-8, 0, 10)),
-            new Entity(HEROES.gojo, new THREE.Vector3(8, 0, 10)),
-        ];
-        helpers.forEach(h => {
-            this.scene.add(h.model);
-            this.entities.push(h);
-            const ai = new BotAI(h, 1);
-            this.bots.push(ai);
+        [HEROES.yuji, HEROES.gojo].forEach((h, i) => {
+            const helper = new Entity(h, new THREE.Vector3(-12 + i * 24, 0, 20));
+            this.scene.add(helper.model);
+            this.entities.push(helper);
+            this.bots.push(new BotAI(helper, 1));
         });
     }
 
@@ -203,6 +243,7 @@ class Game {
         this.entities = [];
         this.bots = [];
         this.player = null;
+        if (this.fpsArms) { this.camera.remove(this.fpsArms); this.fpsArms = null; }
         this.effects.clear();
         this.ui.clearEntityBars();
         document.exitPointerLock();
@@ -212,7 +253,13 @@ class Game {
         if (!this.player || this.player.isDead) return;
         const targets = this.entities.filter(e => e !== this.player);
         const lookDir = this._getLookDirection();
-        this.abilities.execute(this.player, key, targets, lookDir);
+        const used = this.abilities.execute(this.player, key, targets, lookDir);
+        if (used) {
+            // Trigger glitch on ult
+            if (key === 'F') this._triggerGlitch(0.8);
+            // Screen pulse on ability use
+            this.cursedPass.uniforms.pulseIntensity.value = 0.5;
+        }
     }
 
     _dash() {
@@ -220,14 +267,22 @@ class Game {
         const dir = this._getMoveDirection();
         if (dir.lengthSq() > 0) {
             this.player.dash(dir);
-            this.effects.spawnTrail(this.player.getPosition().clone().add(new THREE.Vector3(0, 1, 0)), 0xffaa33);
+            this.effects.spawnTrail(this.player.getPosition().clone().add(new THREE.Vector3(0, 1, 0)), this.player.heroDef.colors.accent);
+            // Speed line effect
+            this.cursedPass.uniforms.aberrationAmount.value = 0.012;
+            setTimeout(() => { this.cursedPass.uniforms.aberrationAmount.value = 0.003; }, 200);
         }
+    }
+
+    _triggerGlitch(duration) {
+        this.glitchPass.enabled = true;
+        this.glitchTimer = duration;
     }
 
     _getLookDirection() {
         const dir = new THREE.Vector3(0, 0, -1);
+        dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), -this.cameraPitch);
         dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.cameraYaw);
-        dir.y = -Math.sin(this.cameraPitch);
         dir.normalize();
         return dir;
     }
@@ -251,21 +306,31 @@ class Game {
         const isMoving = moveDir.lengthSq() > 0;
 
         if (isMoving && !this.player.isDashing) {
-            this.player.model.position.add(moveDir.multiplyScalar(this.player.speed * dt));
-            // Rotate model to face movement direction
-            const angle = Math.atan2(moveDir.x, moveDir.z);
-            this.player.model.rotation.y = angle;
+            this.player.model.position.add(moveDir.clone().multiplyScalar(this.player.speed * dt));
         }
         this.player.isMoving = isMoving;
 
-        // Basic attack on LMB
+        // Player always faces camera direction
+        this.player.model.rotation.y = -this.cameraYaw;
+
+        // Camera bob
+        if (isMoving && this.player.isGrounded) {
+            this.bobTimer += dt * 12;
+            this.bobIntensity = THREE.MathUtils.lerp(this.bobIntensity, 0.04, dt * 5);
+        } else {
+            this.bobIntensity = THREE.MathUtils.lerp(this.bobIntensity, 0, dt * 8);
+        }
+
+        // Attack
         if (this.mouse.lmb && this.pointerLocked) {
             if (this.player.basicAttack()) {
                 const { damage, isCrit } = this.player.getAttackDamage();
                 const lookDir = this._getLookDirection();
                 const pos = this.player.getPosition();
 
-                // Find target in attack range
+                // Animate FPS arm punch
+                this._animatePunch();
+
                 for (const target of this.entities) {
                     if (target === this.player || target.isDead) continue;
                     const dist = pos.distanceTo(target.getPosition());
@@ -274,68 +339,75 @@ class Game {
                     if (toTarget.dot(lookDir) < 0.4) continue;
 
                     const actualDmg = target.takeDamage(damage, this.player, this.effects);
+                    if (isCrit) this.effects.spawnBlackFlash(target.getPosition().clone().add(new THREE.Vector3(0, 2, 0)));
 
-                    if (isCrit) {
-                        this.effects.spawnBlackFlash(target.getPosition().clone().add(new THREE.Vector3(0, 2, 0)));
-                    }
+                    const screenPos = this.ui.worldToScreen(target.getPosition().clone().add(new THREE.Vector3(0, 3, 0)), this.camera);
+                    if (screenPos.visible) this.ui.showDamageNumber(screenPos, actualDmg, isCrit ? 'crit' : 'normal');
 
-                    // Damage number
-                    const screenPos = this.ui.worldToScreen(
-                        target.getPosition().clone().add(new THREE.Vector3(0, 3, 0)),
-                        this.camera
-                    );
-                    if (screenPos.visible) {
-                        this.ui.showDamageNumber(screenPos, actualDmg, isCrit ? 'crit' : 'normal');
-                    }
+                    // Screen shake on hit
+                    this.cursedPass.uniforms.pulseIntensity.value = isCrit ? 0.4 : 0.15;
                     break;
                 }
 
-                // Ranged attack for Gojo
                 if (this.player.heroDef.id === 'gojo') {
-                    this.effects.spawnProjectile(
-                        pos.clone().add(new THREE.Vector3(0, 2, 0)).add(lookDir.clone().multiplyScalar(1)),
-                        lookDir, 0x4488ff, 30, 0.2, 1
-                    );
+                    this.effects.spawnProjectile(pos.clone().add(new THREE.Vector3(0, 2.5, 0)).add(lookDir.clone()), lookDir, 0x4488ff, 40, 0.3, 1.5);
                 }
             }
         }
     }
 
-    _updateCamera() {
+    _animatePunch() {
+        if (!this.fpsArms) return;
+        const rightArm = this.fpsArms.getObjectByName('rightArm');
+        const rightHand = this.fpsArms.getObjectByName('rightHand');
+        const rightGlow = this.fpsArms.getObjectByName('rightGlow');
+        if (!rightArm) return;
+
+        // Quick forward punch animation
+        const origX = rightArm.rotation.x;
+        rightArm.rotation.x = -1.2;
+        if (rightGlow) rightGlow.scale.setScalar(3);
+
+        setTimeout(() => {
+            rightArm.rotation.x = origX;
+            if (rightGlow) rightGlow.scale.setScalar(1);
+        }, 150);
+    }
+
+    _updateCamera(dt) {
         if (this.previewMode) {
-            const t = performance.now() * 0.0002;
-            this.camera.position.set(Math.sin(t) * 30, 15, Math.cos(t) * 30);
-            this.camera.lookAt(0, 3, 0);
+            const t = performance.now() * 0.00015;
+            this.camera.position.set(Math.sin(t) * 60, 20, Math.cos(t) * 60);
+            this.camera.lookAt(0, 5, 0);
             return;
         }
-
         if (!this.player) return;
 
         // Mouse look
-        const sensitivity = 0.003;
+        const sensitivity = 0.002;
         this.cameraYaw += this.mouse.dx * sensitivity;
-        this.cameraPitch = Math.max(-0.5, Math.min(1.2, this.cameraPitch + this.mouse.dy * sensitivity));
+        this.cameraPitch = Math.max(-1.2, Math.min(1.2, this.cameraPitch + this.mouse.dy * sensitivity));
         this.mouse.dx = 0;
         this.mouse.dy = 0;
 
-        // Third person camera
+        // FPS camera at player's head
         const playerPos = this.player.getPosition();
-        const offset = new THREE.Vector3(
-            Math.sin(this.cameraYaw) * this.cameraDistance,
-            this.cameraDistance * 0.5 + this.cameraPitch * 3,
-            Math.cos(this.cameraYaw) * this.cameraDistance
+        const eyeHeight = 3.3 + (this.player.isGrounded ? 0 : this.player.jumpVelocity * 0.02);
+
+        // Camera bob
+        const bobX = Math.sin(this.bobTimer) * this.bobIntensity * 0.5;
+        const bobY = Math.abs(Math.cos(this.bobTimer)) * this.bobIntensity;
+
+        this.camera.position.set(
+            playerPos.x + bobX,
+            playerPos.y + eyeHeight + bobY,
+            playerPos.z
         );
 
-        const targetCamPos = playerPos.clone().add(offset);
-        this.camera.position.lerp(targetCamPos, 0.1);
-        this.camera.lookAt(playerPos.clone().add(new THREE.Vector3(0, 2.5, 0)));
-
-        // Rotate player to camera forward when attacking
-        if (this.mouse.lmb) {
-            const lookDir = this._getLookDirection();
-            const angle = Math.atan2(lookDir.x, lookDir.z);
-            this.player.model.rotation.y = angle;
-        }
+        // Camera rotation
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = -this.cameraYaw;
+        this.camera.rotation.x = -this.cameraPitch;
     }
 
     _updateBots(dt) {
@@ -349,10 +421,9 @@ class Game {
         for (const entity of this.entities) {
             entity.update(dt, this.arenaData);
 
-            // Respawn
             if (entity.isDead) {
                 entity.respawnTimer -= dt;
-                entity.model.visible = false;
+                if (entity !== this.player) entity.model.visible = false;
 
                 if (entity === this.player) {
                     this.ui.showDeath();
@@ -360,76 +431,111 @@ class Game {
                 }
 
                 if (entity.respawnTimer <= 0) {
-                    const spawnPos = new THREE.Vector3(
-                        (Math.random() - 0.5) * 20,
-                        0,
-                        (Math.random() - 0.5) * 20
-                    );
+                    const spawnPos = new THREE.Vector3((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40);
                     entity.respawn(spawnPos);
-                    if (entity === this.player) {
-                        this.ui.hideDeath();
-                    }
+                    if (entity !== this.player) entity.model.visible = true;
+                    if (entity === this.player) this.ui.hideDeath();
                 }
             }
         }
 
-        // Check kills for kill feed
+        // Kill feed
         for (const entity of this.entities) {
             if (entity.isDead && entity.respawnTimer >= 2.9) {
-                // Find killer
                 const killer = this.entities.find(e => e.kills > 0 && e !== entity);
-                if (killer) {
-                    this.ui.addKillFeed(killer.heroDef.name, entity.heroDef.name);
-                }
+                if (killer) this.ui.addKillFeed(killer.heroDef.name, entity.heroDef.name);
             }
         }
 
-        // Gojo passive: highlight nearby enemies
+        // Gojo passive
         if (this.player && this.player.heroDef.id === 'gojo') {
             for (const entity of this.entities) {
                 if (entity === this.player || entity.isDead) continue;
                 const dist = this.player.distanceTo(entity);
-                if (dist < this.highlightRange) {
-                    // Add glow effect
-                    entity.model.traverse(child => {
-                        if (child.isMesh && child.material) {
+                entity.model.traverse(child => {
+                    if (child.isMesh && child.material) {
+                        if (dist < this.highlightRange) {
                             child.material.emissive = new THREE.Color(0x4488ff);
-                            child.material.emissiveIntensity = 0.15 * (1 - dist / this.highlightRange);
-                        }
-                    });
-                } else {
-                    entity.model.traverse(child => {
-                        if (child.isMesh && child.material && child.material.emissive) {
+                            child.material.emissiveIntensity = 0.2 * (1 - dist / this.highlightRange);
+                        } else if (child.material.emissive) {
                             child.material.emissiveIntensity = 0;
                         }
-                    });
-                }
+                    }
+                });
             }
         }
 
-        // Track damage dealt for player hit indicator
+        // Hit indicator
         if (this.player && !this.player.isDead) {
             const prevHp = this.player._prevHp || this.player.hp;
             if (this.player.hp < prevHp) {
                 this.ui.showHitIndicator();
+                this.hitFlashTimer = 0.3;
+                this.cursedPass.uniforms.aberrationAmount.value = 0.008;
             }
             this.player._prevHp = this.player.hp;
         }
     }
 
+    _updatePostProcessing(dt) {
+        const time = performance.now() * 0.001;
+        this.cursedPass.uniforms.time.value = time;
+
+        // Decay effects
+        this.cursedPass.uniforms.pulseIntensity.value *= 0.92;
+        if (this.cursedPass.uniforms.aberrationAmount.value > 0.003) {
+            this.cursedPass.uniforms.aberrationAmount.value = THREE.MathUtils.lerp(this.cursedPass.uniforms.aberrationAmount.value, 0.003, dt * 5);
+        }
+
+        // Hit flash
+        if (this.hitFlashTimer > 0) {
+            this.hitFlashTimer -= dt;
+            this.cursedPass.uniforms.hitFlash.value = this.hitFlashTimer / 0.3;
+        } else {
+            this.cursedPass.uniforms.hitFlash.value = 0;
+        }
+
+        // Glitch timer
+        if (this.glitchTimer > 0) {
+            this.glitchTimer -= dt;
+            if (this.glitchTimer <= 0) this.glitchPass.enabled = false;
+        }
+
+        // Energy tint based on hero
+        if (this.player) {
+            const c = this.player.heroDef.colors.accent;
+            const r = ((c >> 16) & 0xff) / 255;
+            const g = ((c >> 8) & 0xff) / 255;
+            const b = (c & 0xff) / 255;
+            this.cursedPass.uniforms.tintColor.value.set(r * 0.3, g * 0.3, b * 0.3);
+
+            // Low HP danger effects
+            if (this.player.hp < this.player.maxHp * 0.25) {
+                this.cursedPass.uniforms.vignetteAmount.value = 1.2;
+                this.cursedPass.uniforms.scanlineIntensity.value = 0.15;
+                this.bloomPass.strength = 2.5;
+            } else {
+                this.cursedPass.uniforms.vignetteAmount.value = 0.7;
+                this.cursedPass.uniforms.scanlineIntensity.value = 0.08;
+                this.bloomPass.strength = 1.8;
+            }
+
+            // Blocking visual
+            if (this.player.isBlocking) {
+                this.cursedPass.uniforms.tintColor.value.set(0.1, 0.2, 0.5);
+                this.bloomPass.strength = 2.2;
+            }
+        }
+    }
+
     _updateMatch(dt) {
         if (!this.gameActive) return;
-
         this.matchTimer -= dt;
         this.ui.updateTimer(Math.max(0, this.matchTimer));
 
-        // Enemy total kills
-        const enemyKills = this.entities
-            .filter(e => e !== this.player)
-            .reduce((sum, e) => sum + e.kills, 0);
+        const enemyKills = this.entities.filter(e => e !== this.player).reduce((sum, e) => sum + e.kills, 0);
         this.ui.updateEnemyScore(enemyKills);
 
-        // Match end
         if (this.matchTimer <= 0) {
             const playerKills = this.player ? this.player.kills : 0;
             const won = playerKills > enemyKills;
@@ -445,10 +551,9 @@ class Game {
 
     _loop() {
         requestAnimationFrame(() => this._loop());
-
         const dt = Math.min(this.clock.getDelta(), 0.05);
 
-        this._updateCamera();
+        this._updateCamera(dt);
 
         if (this.gameActive) {
             this._updatePlayerMovement(dt);
@@ -457,21 +562,19 @@ class Game {
             this.effects.update(dt);
             this.abilities.update(dt, this.entities);
             this._updateMatch(dt);
+            this._updatePostProcessing(dt);
 
             if (this.player) {
                 this.ui.updateHUD(this.player);
-                // Update entity overhead bars
                 for (const entity of this.entities) {
-                    if (entity !== this.player) {
-                        this.ui.updateEntityBar(entity, this.camera);
-                    }
+                    if (entity !== this.player) this.ui.updateEntityBar(entity, this.camera);
                 }
             }
         }
 
-        this.renderer.render(this.scene, this.camera);
+        // Render with post-processing
+        this.composer.render();
     }
 }
 
-// Start
 const game = new Game();
