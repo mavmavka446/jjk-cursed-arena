@@ -3,7 +3,7 @@ import * as THREE from 'three';
 export function createScene(canvas) {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -26,7 +26,7 @@ export function createScene(canvas) {
     const dirLight = new THREE.DirectionalLight(0x4444aa, 0.6);
     dirLight.position.set(40, 60, 30);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.set(2048, 2048);
+    dirLight.shadow.mapSize.set(1024, 1024);
     dirLight.shadow.camera.near = 1;
     dirLight.shadow.camera.far = 150;
     dirLight.shadow.camera.left = -80;

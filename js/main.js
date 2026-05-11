@@ -22,8 +22,6 @@ class Game {
         this.composer = pp.composer;
         this.bloomPass = pp.bloomPass;
         this.cursedPass = pp.cursedPass;
-        this.glitchPass = pp.glitchPass;
-        this.neonPass = pp.neonPass;
 
         this.effects = new EffectsManager(scene);
         this.abilities = new AbilitySystem(this.effects);
@@ -52,7 +50,6 @@ class Game {
 
         // Hit effect timer
         this.hitFlashTimer = 0;
-        this.glitchTimer = 0;
 
         // FPS arms model
         this.fpsArms = null;
@@ -255,10 +252,7 @@ class Game {
         const lookDir = this._getLookDirection();
         const used = this.abilities.execute(this.player, key, targets, lookDir);
         if (used) {
-            // Trigger glitch on ult
-            if (key === 'F') this._triggerGlitch(0.8);
-            // Screen pulse on ability use
-            this.cursedPass.uniforms.pulseIntensity.value = 0.5;
+            this.cursedPass.uniforms.pulseIntensity.value = 0.3;
         }
     }
 
@@ -268,15 +262,9 @@ class Game {
         if (dir.lengthSq() > 0) {
             this.player.dash(dir);
             this.effects.spawnTrail(this.player.getPosition().clone().add(new THREE.Vector3(0, 1, 0)), this.player.heroDef.colors.accent);
-            // Speed line effect
-            this.cursedPass.uniforms.aberrationAmount.value = 0.012;
-            setTimeout(() => { this.cursedPass.uniforms.aberrationAmount.value = 0.003; }, 200);
+            this.cursedPass.uniforms.aberrationAmount.value = 0.004;
+            setTimeout(() => { this.cursedPass.uniforms.aberrationAmount.value = 0.001; }, 200);
         }
-    }
-
-    _triggerGlitch(duration) {
-        this.glitchPass.enabled = true;
-        this.glitchTimer = duration;
     }
 
     _getLookDirection() {
@@ -344,8 +332,7 @@ class Game {
                     const screenPos = this.ui.worldToScreen(target.getPosition().clone().add(new THREE.Vector3(0, 3, 0)), this.camera);
                     if (screenPos.visible) this.ui.showDamageNumber(screenPos, actualDmg, isCrit ? 'crit' : 'normal');
 
-                    // Screen shake on hit
-                    this.cursedPass.uniforms.pulseIntensity.value = isCrit ? 0.4 : 0.15;
+                    this.cursedPass.uniforms.pulseIntensity.value = isCrit ? 0.2 : 0.08;
                     break;
                 }
 
@@ -383,26 +370,29 @@ class Game {
         }
         if (!this.player) return;
 
-        // Mouse look
-        const sensitivity = 0.002;
+        // Mouse look — lower sensitivity, clamped pitch
+        const sensitivity = 0.0015;
         this.cameraYaw += this.mouse.dx * sensitivity;
-        this.cameraPitch = Math.max(-1.2, Math.min(1.2, this.cameraPitch + this.mouse.dy * sensitivity));
+        this.cameraPitch = Math.max(-1.0, Math.min(1.0, this.cameraPitch + this.mouse.dy * sensitivity));
         this.mouse.dx = 0;
         this.mouse.dy = 0;
 
         // FPS camera at player's head
         const playerPos = this.player.getPosition();
-        const eyeHeight = 3.3 + (this.player.isGrounded ? 0 : this.player.jumpVelocity * 0.02);
+        const eyeHeight = 2.8;
 
-        // Camera bob
-        const bobX = Math.sin(this.bobTimer) * this.bobIntensity * 0.5;
-        const bobY = Math.abs(Math.cos(this.bobTimer)) * this.bobIntensity;
+        // Minimal camera bob (subtle)
+        const bobX = Math.sin(this.bobTimer) * this.bobIntensity * 0.3;
+        const bobY = Math.abs(Math.cos(this.bobTimer)) * this.bobIntensity * 0.5;
 
-        this.camera.position.set(
-            playerPos.x + bobX,
-            playerPos.y + eyeHeight + bobY,
-            playerPos.z
-        );
+        const targetX = playerPos.x + bobX;
+        const targetY = playerPos.y + eyeHeight + bobY;
+        const targetZ = playerPos.z;
+
+        // Smooth camera follow
+        this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetX, 0.3);
+        this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY, 0.3);
+        this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, 0.3);
 
         // Camera rotation
         this.camera.rotation.order = 'YXZ';
@@ -471,7 +461,7 @@ class Game {
             if (this.player.hp < prevHp) {
                 this.ui.showHitIndicator();
                 this.hitFlashTimer = 0.3;
-                this.cursedPass.uniforms.aberrationAmount.value = 0.008;
+                this.cursedPass.uniforms.aberrationAmount.value = 0.003;
             }
             this.player._prevHp = this.player.hp;
         }
@@ -481,10 +471,10 @@ class Game {
         const time = performance.now() * 0.001;
         this.cursedPass.uniforms.time.value = time;
 
-        // Decay effects
-        this.cursedPass.uniforms.pulseIntensity.value *= 0.92;
-        if (this.cursedPass.uniforms.aberrationAmount.value > 0.003) {
-            this.cursedPass.uniforms.aberrationAmount.value = THREE.MathUtils.lerp(this.cursedPass.uniforms.aberrationAmount.value, 0.003, dt * 5);
+        // Decay pulse
+        this.cursedPass.uniforms.pulseIntensity.value *= 0.9;
+        if (this.cursedPass.uniforms.aberrationAmount.value > 0.001) {
+            this.cursedPass.uniforms.aberrationAmount.value = THREE.MathUtils.lerp(this.cursedPass.uniforms.aberrationAmount.value, 0.001, dt * 5);
         }
 
         // Hit flash
@@ -495,35 +485,24 @@ class Game {
             this.cursedPass.uniforms.hitFlash.value = 0;
         }
 
-        // Glitch timer
-        if (this.glitchTimer > 0) {
-            this.glitchTimer -= dt;
-            if (this.glitchTimer <= 0) this.glitchPass.enabled = false;
-        }
-
         // Energy tint based on hero
         if (this.player) {
             const c = this.player.heroDef.colors.accent;
             const r = ((c >> 16) & 0xff) / 255;
             const g = ((c >> 8) & 0xff) / 255;
             const b = (c & 0xff) / 255;
-            this.cursedPass.uniforms.tintColor.value.set(r * 0.3, g * 0.3, b * 0.3);
+            this.cursedPass.uniforms.tintColor.value.set(r * 0.2, g * 0.2, b * 0.2);
 
-            // Low HP danger effects
+            // Low HP: tighten vignette slightly
             if (this.player.hp < this.player.maxHp * 0.25) {
-                this.cursedPass.uniforms.vignetteAmount.value = 1.2;
-                this.cursedPass.uniforms.scanlineIntensity.value = 0.15;
-                this.bloomPass.strength = 2.5;
-            } else {
                 this.cursedPass.uniforms.vignetteAmount.value = 0.7;
-                this.cursedPass.uniforms.scanlineIntensity.value = 0.08;
-                this.bloomPass.strength = 1.8;
+            } else {
+                this.cursedPass.uniforms.vignetteAmount.value = 0.5;
             }
 
             // Blocking visual
             if (this.player.isBlocking) {
-                this.cursedPass.uniforms.tintColor.value.set(0.1, 0.2, 0.5);
-                this.bloomPass.strength = 2.2;
+                this.cursedPass.uniforms.tintColor.value.set(0.05, 0.1, 0.25);
             }
         }
     }

@@ -13,23 +13,16 @@ export function buildArena(scene) {
     ground.receiveShadow = true;
     arena.add(ground);
 
-    // Glowing grid
-    const gridMat = new THREE.MeshBasicMaterial({ color: 0xff1144, wireframe: true, transparent: true, opacity: 0.04 });
-    const grid = new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, HALF * 2, 40, 40), gridMat);
-    grid.rotation.x = -Math.PI / 2;
-    grid.position.y = 0.02;
-    arena.add(grid);
-
-    // Neon grid lines on ground
-    for (let i = -HALF; i <= HALF; i += 20) {
-        const lineGeo = new THREE.BoxGeometry(HALF * 2, 0.05, 0.08);
-        const lineMat = new THREE.MeshBasicMaterial({ color: 0xff0044, transparent: true, opacity: 0.12 });
+    // Subtle ground grid (very faint, no wireframe)
+    for (let i = -HALF; i <= HALF; i += 40) {
+        const lineGeo = new THREE.BoxGeometry(HALF * 2, 0.03, 0.06);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0x331122, transparent: true, opacity: 0.15 });
         const line = new THREE.Mesh(lineGeo, lineMat);
-        line.position.set(0, 0.03, i);
+        line.position.set(0, 0.02, i);
         arena.add(line);
-        const line2 = new THREE.Mesh(lineGeo.clone(), lineMat.clone());
+        const line2 = line.clone();
         line2.rotation.y = Math.PI / 2;
-        line2.position.set(i, 0.03, 0);
+        line2.position.set(i, 0.02, 0);
         arena.add(line2);
     }
 
@@ -82,7 +75,7 @@ export function buildArena(scene) {
     pillarPositions.forEach(([x, z]) => addNeonPillar(arena, colliders, x, z));
 
     // Floating cursed energy orbs (decorative)
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 10; i++) {
         const angle = Math.random() * Math.PI * 2;
         const r = 15 + Math.random() * 60;
         addFloatingOrb(arena, Math.cos(angle) * r, 4 + Math.random() * 8, Math.sin(angle) * r);
@@ -117,21 +110,19 @@ function buildSchool(parent, colliders, cx, cz) {
     roof.castShadow = true;
     parent.add(roof);
 
-    // Windows with neon glow
+    // Windows (emissive mesh only, no per-window lights)
     const winMat = new THREE.MeshBasicMaterial({ color: 0xffaa22, transparent: true, opacity: 0.9 });
     for (let wx = -3; wx <= 3; wx++) {
         for (let wy = 0; wy < 3; wy++) {
             const win = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2), winMat);
             win.position.set(cx + wx * 2.8, 3 + wy * 4, cz + 7.01);
             parent.add(win);
-            // Glow light per window
-            if (wx % 2 === 0) {
-                const wLight = new THREE.PointLight(0xffaa22, 0.3, 6);
-                wLight.position.set(cx + wx * 2.8, 3 + wy * 4, cz + 8);
-                parent.add(wLight);
-            }
         }
     }
+    // Single light for all windows
+    const wLight = new THREE.PointLight(0xffaa22, 0.6, 20);
+    wLight.position.set(cx, 6, cz + 10);
+    parent.add(wLight);
 
     // Side wings
     addBox(parent, colliders, cx - 18, cz, 8, 8, 10, mat);
@@ -176,15 +167,18 @@ function buildSubway(parent, colliders, cx, cz) {
         addBox(parent, colliders, cx + i * 3, cz + 16, 0.5, 3, 1.5, metalMat);
     }
 
-    // Neon strip lights (blue theme)
+    // Neon strip lights (blue theme) — 2 lights + emissive strips
     for (let i = -3; i <= 3; i++) {
-        const stripLight = new THREE.PointLight(0x0088ff, 0.6, 8);
-        stripLight.position.set(cx + i * 4, 5.5, cz);
-        parent.add(stripLight);
         const stripMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 0.15, 0.15), new THREE.MeshBasicMaterial({ color: 0x0088ff }));
         stripMesh.position.set(cx + i * 4, 5.8, cz);
         parent.add(stripMesh);
     }
+    const subL1 = new THREE.PointLight(0x0088ff, 0.8, 20);
+    subL1.position.set(cx - 8, 5.5, cz);
+    parent.add(subL1);
+    const subL2 = new THREE.PointLight(0x0088ff, 0.8, 20);
+    subL2.position.set(cx + 8, 5.5, cz);
+    parent.add(subL2);
 
     // Warning signs
     const warnMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8 });
@@ -227,9 +221,7 @@ function buildForest(parent, colliders, cx, cz) {
         parent.add(leaves2);
 
         if (isCursed) {
-            const glow = new THREE.PointLight(0x6600cc, 0.4, 8);
-            glow.position.set(tx, h, tz);
-            parent.add(glow);
+            // Use emissive material only — no per-tree lights
         }
     }
 
@@ -260,12 +252,10 @@ function buildForest(parent, colliders, cx, cz) {
         parent.add(cap);
     }
 
-    // Fog lights
-    for (let i = 0; i < 6; i++) {
-        const fl = new THREE.PointLight(0x004422, 0.5, 15);
-        fl.position.set(cx + (Math.random() - 0.5) * 30, 2, cz + (Math.random() - 0.5) * 30);
-        parent.add(fl);
-    }
+    // Single forest ambient light
+    const forestLight = new THREE.PointLight(0x004422, 0.8, 35);
+    forestLight.position.set(cx, 5, cz);
+    parent.add(forestLight);
 }
 
 function buildTemple(parent, colliders, cx, cz) {
@@ -371,7 +361,7 @@ function buildCentralArena(parent, colliders, cx, cz) {
         addBox(parent, colliders, cx + dx, cz + dz, 3, 2.5, 3, coverMat);
     });
 
-    // Spectator energy columns
+    // Spectator energy columns (emissive mesh only)
     for (let i = 0; i < 4; i++) {
         const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
         const x = cx + Math.cos(angle) * 14;
@@ -379,10 +369,11 @@ function buildCentralArena(parent, colliders, cx, cz) {
         const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20, 6), new THREE.MeshBasicMaterial({ color: 0xff0066, transparent: true, opacity: 0.15 }));
         col.position.set(x, 10, z);
         parent.add(col);
-        const colLight = new THREE.PointLight(0xff0066, 0.8, 12);
-        colLight.position.set(x, 8, z);
-        parent.add(colLight);
     }
+    // Single center arena light
+    const arenaLight = new THREE.PointLight(0xff0044, 1.0, 25);
+    arenaLight.position.set(cx, 10, cz);
+    parent.add(arenaLight);
 }
 
 // === Utility builders ===
@@ -422,10 +413,7 @@ function addNeonPillar(parent, colliders, x, z) {
         parent.add(strip);
     }
 
-    const light = new THREE.PointLight(color, 0.5, 10);
-    light.position.set(x, h + 1, z);
-    parent.add(light);
-
+    // No per-pillar light — emissive mesh is enough
     colliders.push({ min: new THREE.Vector3(x - 1, 0, z - 1), max: new THREE.Vector3(x + 1, h, z + 1) });
 }
 
