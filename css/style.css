@@ -1,0 +1,226 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; color: #fff; cursor: default; }
+#game-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+
+/* Hero Selection Screen */
+#hero-select-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+}
+.hero-select-title {
+    font-size: 48px; font-weight: 900; letter-spacing: 6px;
+    background: linear-gradient(90deg, #ff3366, #ff6633, #ff3366);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 40px rgba(255,51,102,0.3); margin-bottom: 8px;
+    animation: titlePulse 3s ease-in-out infinite;
+}
+.hero-select-subtitle { font-size: 18px; color: #8888aa; letter-spacing: 4px; margin-bottom: 40px; }
+@keyframes titlePulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+}
+#hero-cards { display: flex; gap: 24px; margin-bottom: 30px; }
+.hero-card {
+    width: 200px; height: 280px; border: 2px solid #333; border-radius: 12px;
+    background: rgba(20,20,40,0.9); cursor: pointer; transition: all 0.3s;
+    display: flex; flex-direction: column; align-items: center; padding: 16px;
+    position: relative; overflow: hidden;
+}
+.hero-card:hover { border-color: #666; transform: translateY(-4px); box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.hero-card.selected { border-color: #ff3366; box-shadow: 0 0 30px rgba(255,51,102,0.4); transform: translateY(-8px); }
+.hero-card-preview { width: 120px; height: 160px; border-radius: 8px; margin-bottom: 12px; }
+.hero-card-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.hero-card-role { font-size: 12px; color: #888; letter-spacing: 2px; }
+.hero-card-team { position: absolute; top: 8px; right: 8px; font-size: 10px; padding: 2px 8px; border-radius: 10px; }
+.team-mage { background: #2244aa; }
+.team-curse { background: #aa2244; }
+
+#hero-info {
+    width: 650px; min-height: 100px; background: rgba(20,20,40,0.8);
+    border: 1px solid #333; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    display: none;
+}
+#hero-info.visible { display: block; }
+#hero-info-name { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+#hero-info-role { font-size: 13px; color: #888; margin-bottom: 10px; }
+#hero-info-passive { font-size: 13px; color: #ffaa33; margin-bottom: 10px; }
+#hero-info-abilities { display: flex; gap: 12px; flex-wrap: wrap; }
+.ability-info-card {
+    background: rgba(40,40,60,0.8); border: 1px solid #444; border-radius: 8px;
+    padding: 10px; flex: 1; min-width: 130px;
+}
+.ability-info-card .key { font-size: 14px; font-weight: 700; color: #ff6633; }
+.ability-info-card .name { font-size: 13px; font-weight: 600; margin: 4px 0; }
+.ability-info-card .desc { font-size: 11px; color: #999; }
+.ability-info-card.ult-card { border-color: #ff3366; }
+
+.mode-select { margin-bottom: 24px; text-align: center; }
+.mode-label { font-size: 14px; color: #888; margin-bottom: 10px; letter-spacing: 2px; }
+.mode-buttons { display: flex; gap: 12px; }
+.mode-btn {
+    padding: 10px 24px; border: 1px solid #444; border-radius: 8px;
+    background: rgba(30,30,50,0.8); color: #aaa; cursor: pointer;
+    font-size: 14px; transition: all 0.2s;
+}
+.mode-btn:hover { border-color: #666; color: #fff; }
+.mode-btn.active { border-color: #ff3366; color: #ff3366; background: rgba(255,51,102,0.1); }
+
+#start-btn {
+    padding: 16px 64px; border: 2px solid #ff3366; border-radius: 8px;
+    background: transparent; color: #ff3366; font-size: 20px; font-weight: 700;
+    letter-spacing: 4px; cursor: pointer; transition: all 0.3s;
+}
+#start-btn:hover:not(:disabled) { background: #ff3366; color: #fff; box-shadow: 0 0 30px rgba(255,51,102,0.5); }
+#start-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* HUD */
+#hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+#hp-bar-container {
+    position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+    width: 300px; height: 24px; background: rgba(0,0,0,0.7); border: 1px solid #444;
+    border-radius: 4px; overflow: hidden;
+}
+#hp-bar { height: 100%; width: 100%; background: linear-gradient(90deg, #22cc44, #44ff66); transition: width 0.3s; }
+#hp-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 12px; font-weight: 700; text-shadow: 1px 1px 2px #000; }
+
+#energy-bar-container {
+    position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%);
+    width: 300px; height: 14px; background: rgba(0,0,0,0.7); border: 1px solid #334;
+    border-radius: 4px; overflow: hidden;
+}
+#energy-bar { height: 100%; width: 100%; background: linear-gradient(90deg, #4466ff, #66aaff); transition: width 0.3s; }
+#energy-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 10px; font-weight: 600; text-shadow: 1px 1px 2px #000; }
+
+#ability-bar {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px;
+}
+.ability-slot {
+    width: 56px; height: 56px; background: rgba(20,20,40,0.85); border: 2px solid #555;
+    border-radius: 8px; position: relative; display: flex; align-items: center; justify-content: center;
+}
+.ability-slot.ult { border-color: #ff3366; width: 64px; height: 64px; }
+.ability-key {
+    position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; font-weight: 700; color: #aaa;
+}
+.ability-icon { width: 100%; height: 100%; border-radius: 6px; }
+.ability-cd {
+    position: absolute; top: 0; left: 0; width: 100%; height: 0%;
+    background: rgba(0,0,0,0.7); border-radius: 6px; transition: height 0.1s;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; color: #fff;
+}
+.ability-slot.on-cooldown { border-color: #333; }
+.ability-slot.active-ability { border-color: #ffaa00; box-shadow: 0 0 16px rgba(255,170,0,0.6); }
+
+#crosshair {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 24px; color: rgba(255,255,255,0.6); text-shadow: 0 0 4px rgba(0,0,0,0.8);
+    pointer-events: none;
+}
+
+#hero-portrait {
+    position: absolute; bottom: 70px; left: 20px;
+    width: 60px; height: 60px; border: 2px solid #555; border-radius: 50%;
+}
+#hero-name-hud {
+    position: absolute; bottom: 50px; left: 20px;
+    font-size: 14px; font-weight: 700; text-shadow: 1px 1px 4px #000;
+    width: 60px; text-align: center;
+}
+
+#kill-feed {
+    position: absolute; top: 20px; right: 20px;
+    display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+}
+.kill-msg {
+    padding: 6px 12px; background: rgba(0,0,0,0.7); border-radius: 4px;
+    font-size: 13px; animation: fadeKill 3s forwards;
+}
+@keyframes fadeKill { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+#timer {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    font-size: 28px; font-weight: 700; text-shadow: 0 0 10px rgba(0,0,0,0.8);
+}
+#score-display {
+    position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+    font-size: 20px; font-weight: 700;
+}
+#score-player { color: #44aaff; }
+#score-enemy { color: #ff4444; }
+
+.dmg-num {
+    position: absolute; font-weight: 900; pointer-events: none;
+    animation: dmgFloat 1s forwards; text-shadow: 1px 1px 3px #000;
+}
+@keyframes dmgFloat {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(0.6); }
+}
+.dmg-num.crit { color: #ffaa00; font-size: 28px; }
+.dmg-num.normal { color: #fff; font-size: 20px; }
+.dmg-num.heal { color: #44ff66; font-size: 18px; }
+
+#hit-indicator {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    border: 4px solid rgba(255,0,0,0.5); pointer-events: none;
+    animation: hitFlash 0.3s forwards;
+}
+@keyframes hitFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+#block-indicator {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-70%);
+    font-size: 24px; font-weight: 900; color: #66aaff; letter-spacing: 4px;
+    text-shadow: 0 0 20px rgba(100,170,255,0.8);
+}
+
+#dash-indicator {
+    position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%);
+    width: 60px; height: 4px; background: rgba(40,40,60,0.8); border-radius: 2px;
+}
+#dash-fill { height: 100%; width: 100%; background: #ffaa33; border-radius: 2px; transition: width 0.1s; }
+
+#controls-hint {
+    position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: rgba(255,255,255,0.3); white-space: nowrap;
+}
+
+/* Death Screen */
+#death-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 50; background: rgba(80,0,0,0.6);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.death-text { font-size: 64px; font-weight: 900; color: #ff2222; letter-spacing: 8px; text-shadow: 0 0 40px rgba(255,0,0,0.5); }
+.respawn-timer { font-size: 20px; color: #ffaaaa; margin-top: 16px; }
+
+/* Result Screen */
+#result-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 100; background: rgba(10,10,30,0.95);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+#result-text { font-size: 56px; font-weight: 900; letter-spacing: 6px; margin-bottom: 24px; }
+#result-text.victory { color: #ffaa00; text-shadow: 0 0 40px rgba(255,170,0,0.5); }
+#result-text.defeat { color: #ff2222; text-shadow: 0 0 40px rgba(255,0,0,0.5); }
+#result-stats { font-size: 18px; color: #aaa; margin-bottom: 32px; text-align: center; line-height: 2; }
+#back-btn {
+    padding: 14px 48px; border: 2px solid #ff3366; border-radius: 8px;
+    background: transparent; color: #ff3366; font-size: 16px; font-weight: 700;
+    letter-spacing: 3px; cursor: pointer; transition: all 0.3s;
+}
+#back-btn:hover { background: #ff3366; color: #fff; }
+
+/* HP bars over characters */
+.entity-hp-bar {
+    position: absolute; pointer-events: none;
+    width: 60px; height: 6px; background: rgba(0,0,0,0.6); border: 1px solid #555; border-radius: 3px;
+}
+.entity-hp-fill { height: 100%; border-radius: 2px; transition: width 0.2s; }
+.entity-name-tag {
+    position: absolute; pointer-events: none; font-size: 11px; font-weight: 700;
+    text-shadow: 1px 1px 3px #000; white-space: nowrap; text-align: center;
+}

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jujutsu Kaisen: Cursed Arena</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Hero Selection Screen -->
+    <div id="hero-select-screen">
+        <div class="hero-select-title">JUJUTSU KAISEN: CURSED ARENA</div>
+        <div class="hero-select-subtitle">Choose Your Fighter</div>
+        <div id="hero-cards"></div>
+        <div id="hero-info">
+            <div id="hero-info-name"></div>
+            <div id="hero-info-role"></div>
+            <div id="hero-info-passive"></div>
+            <div id="hero-info-abilities"></div>
+        </div>
+        <div class="mode-select">
+            <div class="mode-label">Game Mode</div>
+            <div class="mode-buttons">
+                <button class="mode-btn active" data-mode="training">Training</button>
+                <button class="mode-btn" data-mode="deathmatch">Deathmatch 1v1</button>
+                <button class="mode-btn" data-mode="boss">Boss Battle</button>
+            </div>
+        </div>
+        <button id="start-btn" disabled>START BATTLE</button>
+    </div>
+
+    <!-- Game HUD -->
+    <div id="hud" style="display:none;">
+        <div id="hp-bar-container">
+            <div id="hp-bar"></div>
+            <div id="hp-text">100 / 100</div>
+        </div>
+        <div id="energy-bar-container">
+            <div id="energy-bar"></div>
+            <div id="energy-text">100 / 100</div>
+        </div>
+        <div id="ability-bar">
+            <div class="ability-slot" data-key="Q"><span class="ability-key">Q</span><div class="ability-icon" id="ability-q"></div><div class="ability-cd" id="cd-q"></div></div>
+            <div class="ability-slot" data-key="E"><span class="ability-key">E</span><div class="ability-icon" id="ability-e"></div><div class="ability-cd" id="cd-e"></div></div>
+            <div class="ability-slot" data-key="R"><span class="ability-key">R</span><div class="ability-icon" id="ability-r"></div><div class="ability-cd" id="cd-r"></div></div>
+            <div class="ability-slot ult" data-key="F"><span class="ability-key">F</span><div class="ability-icon" id="ability-f"></div><div class="ability-cd" id="cd-f"></div></div>
+        </div>
+        <div id="crosshair">+</div>
+        <div id="hero-portrait"></div>
+        <div id="hero-name-hud"></div>
+        <div id="kill-feed"></div>
+        <div id="timer">5:00</div>
+        <div id="score-display">
+            <span id="score-player">0</span> : <span id="score-enemy">0</span>
+        </div>
+        <div id="damage-numbers"></div>
+        <div id="hit-indicator" style="display:none;"></div>
+        <div id="block-indicator" style="display:none;">BLOCK</div>
+        <div id="dash-indicator">
+            <div id="dash-fill"></div>
+        </div>
+        <div id="controls-hint">
+            WASD - Move | LMB - Attack | RMB - Block | Shift - Dash | Space - Jump | Q/E/R/F - Abilities
+        </div>
+    </div>
+
+    <!-- Death Screen -->
+    <div id="death-screen" style="display:none;">
+        <div class="death-text">DEFEATED</div>
+        <div class="respawn-timer">Respawning in <span id="respawn-count">3</span>...</div>
+    </div>
+
+    <!-- Victory/Defeat Screen -->
+    <div id="result-screen" style="display:none;">
+        <div id="result-text"></div>
+        <div id="result-stats"></div>
+        <button id="back-btn">Back to Menu</button>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
